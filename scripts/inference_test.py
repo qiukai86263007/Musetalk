@@ -16,6 +16,7 @@ from musetalk.utils.blending import get_image
 from musetalk.utils.utils import load_all_model
 import shutil
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # load model weights
 audio_processor, vae, unet, pe = load_all_model()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
