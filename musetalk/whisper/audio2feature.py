@@ -94,18 +94,27 @@ class Audio2Feature():
 
         return whisper_chunks
 
-    def audio2feat(self,audio_path):
-        # get the sample rate of the audio
+    def audio2feat(self, audio_path):
+        # 获取音频的采样率（此处注释与实际功能不符，实际上获取的是转录结果）
         result = self.model.transcribe(audio_path)
         embed_list = []
+        # 遍历转录结果中的每个片段(segment)
         for emb in result['segments']:
+            # 从当前片段中提取编码器嵌入(encoder_embeddings)，并进行维度变换
             encoder_embeddings = emb['encoder_embeddings']
-            encoder_embeddings = encoder_embeddings.transpose(0,2,1,3)
+            encoder_embeddings = encoder_embeddings.transpose(0, 2, 1, 3)
             encoder_embeddings = encoder_embeddings.squeeze(0)
+
+            # 计算时间索引，start_idx 和 end_idx 分别表示当前片段的开始和结束时间点
             start_idx = int(emb['start'])
             end_idx = int(emb['end'])
-            emb_end_idx = int((end_idx - start_idx)/2)
+            # 根据时间段计算嵌入向量需要截取的长度
+            emb_end_idx = int((end_idx - start_idx) / 2)
+
+            # 将处理后的嵌入向量裁剪到所需长度，并添加到嵌入列表(embed_list)中
             embed_list.append(encoder_embeddings[:emb_end_idx])
+
+        # 将所有嵌入向量沿指定轴拼接起来，形成一个连续的数组
         concatenated_array = np.concatenate(embed_list, axis=0)
         return concatenated_array
 

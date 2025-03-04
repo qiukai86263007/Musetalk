@@ -4,6 +4,7 @@ import os
 from omegaconf import OmegaConf
 import numpy as np
 import cv2
+
 import torch
 import glob
 import pickle
@@ -15,12 +16,11 @@ from musetalk.utils.preprocessing import get_landmark_and_bbox,read_imgs,coord_p
 from musetalk.utils.blending import get_image
 from musetalk.utils.utils import load_all_model
 import shutil
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # load model weights
 audio_processor, vae, unet, pe = load_all_model()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-timesteps = torch.tensor([0], device=device)
+# os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+timesteps = torch.tensor([0],device=device)
 
 @torch.no_grad()
 def main(args):
@@ -53,27 +53,47 @@ def main(args):
         output_vid_name = os.path.join(args.result_dir, args.output_vid_name)
     ############################################## extract frames from source video ##############################################
     if get_file_type(video_path)=="video":
+        # 如果输入是视频文件：
+
+        # 设置保存提取帧的目录路径
+        # args.result_dir 是结果保存的根目录，input_basename 是视频文件的基本名称（不含扩展名）
         save_dir_full = os.path.join(args.result_dir, input_basename)
         os.makedirs(save_dir_full,exist_ok = True)
+        # 使用 ffmpeg 从视频中提取帧
+        # -v fatal：只显示致命错误信息
+        # -i {video_path}：指定输入视频路径
+        # -start_number 0：帧编号从 0 开始
+        # {save_dir_full}/%08d.png：将帧保存为 8 位数字编号的 PNG 文件（例如 00000000.png, 00000001.png, ...）
         cmd = f"ffmpeg -v fatal -i {video_path} -start_number 0 {save_dir_full}/%08d.png"
         os.system(cmd)
+        # 获取保存的帧文件列表，按文件名排序
+        # 使用 glob 匹配目录中所有支持的图片格式（如 jpg, png, jpeg, JPG, PNG 等）
         input_img_list = sorted(glob.glob(os.path.join(save_dir_full, '*.[jpJP][pnPN]*[gG]')))
         fps = get_video_fps(video_path)
     elif get_file_type(video_path)=="image":
+        # 将图片路径放入列表中（因为后续代码可能期望一个列表）
         input_img_list = [video_path, ]
         fps = args.fps
     elif os.path.isdir(video_path):  # input img folder
+        # 如果输入是一个图片文件夹：
+        # 获取文件夹中所有支持的图片文件（如 jpg, png, jpeg, JPG, PNG 等）
         input_img_list = glob.glob(os.path.join(video_path, '*.[jpJP][pnPN]*[gG]'))
+        # 按文件名排序（假设文件名是数字，例如 0.jpg, 1.jpg, 2.jpg, ...）
         input_img_list = sorted(input_img_list, key=lambda x: int(os.path.splitext(os.path.basename(x))[0]))
         fps = args.fps
     else:
+        # 啥也不是则抛出ValueError异常
         raise ValueError(f"{video_path} should be a video file, an image file or a directory of images")
 
     #print(input_img_list)
     ############################################## extract audio feature ##############################################
+    # 使用了whisper推理，（可尝试对whisper推理过程加速）
+    # 使用音频处理器将音频文件转换为特征表示
     whisper_feature = audio_processor.audio2feat(audio_path)
+    # 将提取的音频特征按时间分块
     whisper_chunks = audio_processor.feature2chunks(feature_array=whisper_feature,fps=fps)
     ############################################## preprocess input image  ##############################################
+    # 预处理图片 方便后续的UNET进行处理，其中使用了VAE（可尝试VAE加速）
     if os.path.exists(crop_coord_save_path) and args.use_saved_coord:
         print("using extracted coordinates")
         with open(crop_coord_save_path,'rb') as f:
@@ -90,10 +110,15 @@ def main(args):
     for bbox, frame in zip(coord_list, frame_list):
         if bbox == coord_placeholder:
             continue
+            # 解包边界框的坐标值
         x1, y1, x2, y2 = bbox
+        # 根据边界框坐标裁剪帧
         crop_frame = frame[y1:y2, x1:x2]
-        crop_frame = cv2.resize(crop_frame,(256,256),interpolation = cv2.INTER_LANCZOS4)
+        # 调整裁剪后图像大小为256x256像素，使用Lanczos插值算法以获得高质量缩放效果
+        crop_frame = cv2.resize(crop_frame, (256, 256), interpolation=cv2.INTER_LANCZOS4)
+        # 使用变分自动编码器(VAE)将裁剪并调整大小后的帧转换为潜在变量，供UNET模型使用
         latents = vae.get_latents_for_unet(crop_frame)
+        # 将处理得到的潜在变量添加到输入潜在变量列表中
         input_latent_list.append(latents)
 
     # to smooth the first and the last frame
@@ -101,12 +126,19 @@ def main(args):
     coord_list_cycle = coord_list + coord_list[::-1]
     input_latent_list_cycle = input_latent_list + input_latent_list[::-1]
     ############################################## inference batch by batch ##############################################
+    # 真正开始推理的过程
     print("start inference")
+    # 获取音频chunks的数量
     video_num = len(whisper_chunks)
+    # 获取批处理大小
     batch_size = args.batch_size
+    # 使用datagen函数生成批次数据迭代器，输入为whisper音频特征块和循环潜在变量列表
     gen = datagen(whisper_chunks,input_latent_list_cycle,batch_size)
+    # 展示重构后的帧/模型输出的帧
     res_frame_list = []
+    # 遍历由datagen生成的数据批次，tqdm用于显示进度条
     for i, (whisper_batch,latent_batch) in enumerate(tqdm(gen,total=int(np.ceil(float(video_num)/batch_size)))):
+        # 将whisper音频特征块转换为torch张量，并将设备 和 类型 都与unet同步
         audio_feature_batch = torch.from_numpy(whisper_batch)
         audio_feature_batch = audio_feature_batch.to(device=unet.device,
                                                      dtype=unet.model.dtype) # torch, B, 5*N,384
@@ -146,6 +178,7 @@ def main(args):
     print(f"result is save to {output_vid_name}")
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
     # parser.add_argument("--inference_config", type=str, default="configs/inference/test_img.yaml")
     parser.add_argument("--video_path", type=str, required=True)

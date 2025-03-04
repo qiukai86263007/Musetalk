@@ -43,6 +43,18 @@ def datagen(whisper_chunks,
             vae_encode_latents,
             batch_size=8,
             delay_frame=0):
+    '''
+    生成器函数，用于创建包含音频特征和潜在变量的批次。
+
+    参数:
+    - whisper_chunks: 音频特征列表，每个元素对应一段音频的特征表示。
+    - vae_encode_latents: 潜在变量列表，通常由VAE编码器生成，对应图像帧的潜在表示。
+    - batch_size: 每个批次中的样本数量，默认为8。
+    - delay_frame: 延迟帧数，用于调整音频特征与潜在变量之间的对齐，默认为0。
+
+    返回:
+    - yield返回每一批次的(audio_feature_batch, latent_batch)，分别为numpy数组和torch张量格式。
+    '''
     whisper_batch, latent_batch = [], []
     for i, w in enumerate(whisper_chunks):
         idx = (i+delay_frame)%len(vae_encode_latents)
