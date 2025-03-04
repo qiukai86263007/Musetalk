@@ -1,4 +1,5 @@
 import argparse
+import fileinput
 import os
 from omegaconf import OmegaConf
 import numpy as np
@@ -29,6 +30,7 @@ def main(args):
         unet.model = unet.model.half()
     
     inference_config = OmegaConf.load(args.inference_config)
+
     print(inference_config)
     for task_id in inference_config:
         video_path = inference_config[task_id]["video_path"]
@@ -143,6 +145,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--inference_config", type=str, default="configs/inference/test_img.yaml")
+
     parser.add_argument("--bbox_shift", type=int, default=0)
     parser.add_argument("--result_dir", default='./results', help="path to output")
 
@@ -157,5 +160,9 @@ if __name__ == "__main__":
                         help="Whether use float16 to speed up inference",
     )
 
+    # new param
+    parser
+
     args = parser.parse_args()
+    print(args)
     main(args)
