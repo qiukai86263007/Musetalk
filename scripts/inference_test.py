@@ -11,11 +11,16 @@ import pickle
 from tqdm import tqdm
 import copy
 
+import time
+
 from musetalk.utils.utils import get_file_type,get_video_fps,datagen
 from musetalk.utils.preprocessing import get_landmark_and_bbox,read_imgs,coord_placeholder
 from musetalk.utils.blending import get_image
 from musetalk.utils.utils import load_all_model
 import shutil
+
+start_time = time.time()
+
 # load model weights
 audio_processor, vae, unet, pe = load_all_model()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -40,6 +45,7 @@ def main(args):
     video_path = args.video_path
     audio_path = args.audio_path
     bbox_shift = args.bbox_shift
+
     input_basename = os.path.basename(video_path).split('.')[0]
     audio_basename  = os.path.basename(audio_path).split('.')[0]
     output_basename = f"{input_basename}_{audio_basename}"
@@ -173,9 +179,14 @@ def main(args):
     print(cmd_combine_audio)
     os.system(cmd_combine_audio)
 
+    end_time = time.time()
+
     os.remove("temp.mp4")
     shutil.rmtree(result_img_save_path)
     print(f"result is save to {output_vid_name}")
+
+    running_time = end_time - start_time
+    print("running time:", running_time)
 
 if __name__ == "__main__":
 
@@ -198,7 +209,7 @@ if __name__ == "__main__":
     )
 
     # new param
-    parser
+    # parser
 
     args = parser.parse_args()
     print(args)
